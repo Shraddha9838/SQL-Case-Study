@@ -1,0 +1,147 @@
+
+# 1 How many pubs are located in each country?
+
+SELECT 
+  country , COUNT(*) AS num_of_pub_located 
+FROM pubs
+GROUP BY country;
+
+ # 2 What is the total sales amount for each pub, including the beverage price and quantity sold?
+ 
+ SELECT 
+   p.pub_name , 
+   SUM(s.Quantity*b.price_per_unit) AS total_sales 
+ FROM pubs p 
+ JOIN sales s ON p.pub_id = s.pub_id
+ JOIN beverages b ON s.beverage_id = b.beverage_id
+ GROUP BY  p.pub_name, p.pub_id;
+ 
+ 
+ # 3 Which pub has the highest average rating?
+
+Select 
+ r.pub_id , p.pub_name , 
+ ROUND(avg(r.rating),2) AS average_rating 
+FROM ratings r 
+JOIN pubs p ON p.pub_id = r.pub_id
+GROUP BY r.pub_id , p.pub_name
+ORDER BY average_rating DESC;
+
+#4 What are the top 5 beverages by sales quantity across all pubs?
+
+SELECT s.beverage_id, b.beverage_name , 
+ SUM(s.Quantity) AS sales_quantity 
+FROM sales s 
+JOIN beverages b ON s.beverage_id = b.beverage_id 
+GROUP BY s.beverage_id, b.beverage_name
+ORDER BY sales_quantity DESC
+LIMIT 5;
+
+
+
+ # 5.How many sales transactions occurred on each date?
+ 
+ SELECT transaction_date, 
+  COUNT(sale_id) as num_of_transaction
+ FROM sales 
+ GROUP BY transaction_date
+ ORDER BY num_of_transaction DESC;
+ 
+ #6.Find the name of someone that had cocktails and which pub they had it in.
+ 
+ SELECT 
+  r.customer_name,p.pub_name 
+ FROM ratings r JOIN pubs p 
+ ON p.pub_id =r.pub_id 
+ JOIN sales s ON r.pub_id=s.pub_id
+ JOIN beverages b ON s.beverage_id =b.beverage_id
+ WHERE b.category = "Cocktail";
+ 
+ 
+ #7. What is the average price per unit for each category of beverages, excluding the category 'Spirit'?
+ 
+ SELECT category , 
+  ROUND(AVG(price_per_unit),2) AS average_price 
+ FROM beverages
+ WHERE category NOT IN ("Spirit")
+ GROUP BY category;
+ 
+ 
+ # 8. Which pubs have a rating higher than the average rating of all pubs?
+ 
+ WITH rating_ AS
+ (
+ SELECT p.pub_name, r.rating ,
+ dense_rank() over(partition by p.pub_name order by r.rating desc) as dnrk
+ FROM pubs p JOIN ratings r 
+ ON p.pub_id = r.pub_id 
+ WHERE 
+ (SELECT AVG(rating) FROM ratings) < r.rating 
+ ORDER BY rating DESC)
+ SELECT * FROM rating_ 
+ WHERE dnrk = 1;
+ 
+ 
+ # 9. What is the running total of sales amount for each pub, ordered by the transaction date?
+ 
+WITH cte AS
+(
+ SELECT p.pub_name ,s.transaction_date, 
+  SUM((s.Quantity)*(b.price_per_unit)) AS sales_amount
+ FROM pubs p JOIN sales s 
+ ON p.pub_id = s.pub_id 
+ JOIN beverages b ON s.beverage_id = b.beverage_id
+ GROUP BY p.pub_name,s.transaction_date
+ ) 
+ SELECT * , SUM(cte.sales_amount) 
+ OVER (PARTITION BY cte.pub_name ORDER BY cte.transaction_date) 
+ AS running_total_of_sales_amount
+ FROM cte;
+ 
+ #10. For each country, what is the average price per unit of beverages in each category, 
+#and what is the overall average price per unit of beverages across all category
+
+WITH avg_price AS 
+(
+SELECT p.country,b.category, 
+ ROUND(AVG(b.price_per_unit),1) AS average_price_category
+FROM pubs p JOIN sales s ON s.pub_id = p.pub_id 
+JOIN beverages b on b.beverage_id=s.beverage_id
+GROUP BY p.country,b.category
+),
+total_avg_price AS 
+(
+SELECT p.country, ROUND(AVG(b.price_per_unit),1) AS total_average_price
+FROM pubs p JOIN sales s ON s.pub_id = p.pub_id 
+JOIN beverages b on b.beverage_id=s.beverage_id
+GROUP BY p.country
+)
+SELECT ap.country, ap.category, ap.average_price_category,
+ tap.total_average_price FROM avg_price ap
+JOIN total_avg_price tap
+ON ap.country = tap.country;
+
+
+#11.For each pub, what is the percentage contribution of each category of beverages to 
+#the total sales amount, and what is the pub's overall sales amount?
+
+
+WITH category_sales_amt AS
+(
+SELECT p.pub_name , b.category , sum(s.Quantity*b.price_per_unit) AS catgy_sales_amount
+FROM pubs p JOIN sales s ON p.pub_id = s.pub_id 
+JOIN beverages b ON s.beverage_id = b.beverage_id 
+GROUP BY p.pub_name,b.category
+),
+ overall_sale_amt AS
+ (
+SELECT p.pub_name, sum(s.Quantity*b.price_per_unit) as total_sales_amount
+FROM pubs p JOIN sales s ON p.pub_id = s.pub_id 
+JOIN beverages b ON s.beverage_id = b.beverage_id 
+GROUP BY p.pub_name
+)
+SELECT a.pub_name, a.category , a.catgy_sales_amount, z.total_sales_amount,
+ round(sum(a.catgy_sales_amount/ z.total_sales_amount *100),2) AS percentage_contribution_category
+FROM category_sales_amt a JOIN overall_sale_amt z
+ON a.pub_name = z.pub_name
+GROUP BY a.pub_name ,a.category;
